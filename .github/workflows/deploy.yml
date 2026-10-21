@@ -1,0 +1,55 @@
+# Publie la PWA (dossier web/) sur GitHub Pages à chaque push sur main.
+# Réglages requis : Settings ▸ Pages ▸ Source = « GitHub Actions »,
+# et dans Settings ▸ Secrets and variables ▸ Actions :
+#   variable  VITE_GAS_URL      (onglet Variables)  URL /exec du déploiement Apps Script
+#   secret    VITE_APP_TOKEN    (onglet Secrets)    même valeur que APP_TOKEN dans Apps Script
+# ATTENTION : ces deux valeurs sont intégrées au JavaScript publié, donc lisibles par
+# quiconque ouvre le site. Le « secret » GitHub ne protège que les journaux du build.
+name: Déployer la PWA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Si web/package-lock.json est commité, remplacer « npm install » par « npm ci ».
+      - run: npm install
+      - run: npm test
+      - run: npm run build
+        env:
+          VITE_GAS_URL: ${{ vars.VITE_GAS_URL }}
+          VITE_APP_TOKEN: ${{ secrets.VITE_APP_TOKEN }}
+          VITE_DEFAULT_PREFIX: FI
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

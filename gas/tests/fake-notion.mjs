@@ -1,0 +1,305 @@
+// Doublures de Notion, Drive et des services Apps Script pour tester Code.gs + Report.gs.
+// Notion simulé : VRAI arbre de blocs (parents/enfants, pagination, mise à jour,
+// suppression, insertion à une position), avec les limites documentées de l'API.
+// Ce n’est pas le vrai Notion : seule la fonction testNotionCapabilities() (Apps Script) vérifie votre espace de travail.
+// (fonction testNotionCapabilities dans Apps Script) valide le contrat réel.
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+
+export const ROOT = 'ROOT_FOLDER_ID_0000000000000000';
+export const PAGE = 'aaaaaaaabbbbccccddddeeeeeeeeeeee';
+export const DB = '11111111222233334444555555555555';
+export const TOKEN = 'tok_test';
+export const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+const dash = (h) => `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+const norm = (id) => String(id).replace(/-/g, '');
+const RICH_KEYS = new Set(['rich_text', 'caption']);
+
+export function makeWorld() {
+  const w = {
+    calls: [], blocks: {}, kids: {}, drive: {}, folders: {}, uploads: {}, seq: 0, now: Date.parse('2026-10-20T08:00:00Z'),
+    positionMode: 'both',          // both | after-only | none : ce que « Notion » accepte
+    pageDb: null, failNext: null, pageSize: 100
+  };
+  w.id = () => dash(String(++w.seq).padStart(32, '0'));
+  w.fid = (p) => p + '_' + String(++w.seq).padStart(20, '0');
+
+  const withPlain = (o) => {
+    if (Array.isArray(o)) return o.map(withPlain);
+    if (o && typeof o === 'object') {
+      return Object.fromEntries(Object.entries(o).map(([k, v]) => [k,
+        RICH_KEYS.has(k) && Array.isArray(v) ? v.map((t) => ({ ...t, plain_text: t.text.content })) : withPlain(v)]));
+    }
+    return o;
+  };
+
+  // Limites de l'API : 100 enfants, 2 niveaux d'imbrication, 2000 caractères, 100 éléments de rich_text.
+  const validate = (block, depth) => {
+    assert.ok(depth <= 2, 'Notion : 2 niveaux d’imbrication au maximum par requête');
+    const body = block[block.type];
+    assert.ok(body, 'bloc sans contenu : ' + block.type);
+    for (const k of RICH_KEYS) {
+      if (body[k]) {
+        assert.ok(body[k].length <= 100, 'rich_text : 100 éléments maximum');
+        body[k].forEach((t) => assert.ok(t.text.content.length <= 2000, 'rich_text : 2000 caractères maximum'));
+      }
+    }
+    if (body.children) {
+      assert.ok(body.children.length <= 100, 'Notion : 100 enfants maximum par tableau');
+      body.children.forEach((c) => validate(c, depth + 1));
+    }
+  };
+
+  // Comme Notion : un bloc dont un ancêtre est archivé est inaccessible.
+  const dead = (b) => { for (let x = b; x && x.id; x = w.blocks[x.parent]) { if (x.archived) return true; } return false; };
+  const create = (parentId, spec) => {
+    const id = w.id();
+    const { children, ...rest } = spec[spec.type];
+    const b = { object: 'block', id, type: spec.type, parent: parentId, archived: false, [spec.type]: withPlain(rest) };
+    if (spec.type === 'image') {
+      const fu = rest.file_upload && w.uploads[rest.file_upload.id];
+      assert.ok(fu && fu.sent, 'image : file_upload inconnu ou non envoyé');
+      assert.ok(!fu.attached, 'image : file_upload déjà utilisé');
+      fu.attached = true;
+    }
+    w.blocks[id] = b;
+    w.kids[id] = [];
+    (children || []).forEach((c) => { w.kids[id].push(create(id, c).id); });
+    return b;
+  };
+  w.seedChildren = (parentId, specs) => specs.map((s) => {
+    const b = create(dash(norm(parentId)), s);
+    w.kids[dash(norm(parentId))].push(b.id);
+    return b;
+  });
+  const key = (id) => dash(norm(id));
+  w.kids[key(PAGE)] = [];
+  w.blocks[key(PAGE)] = { id: key(PAGE), type: 'page' };
+
+  const rtS = (t) => [{ type: 'text', text: { content: t } }];
+  w.rt = rtS;
+  // Page de mission : H1, 2 composants JSON, 1 to_do, 1 JSON invalide
+  w.seedChildren(PAGE, [
+    { type: 'heading_1', heading_1: { rich_text: rtS('Matériel') } },
+    { type: 'code', code: { language: 'json', rich_text: rtS(JSON.stringify({ type: 'image_upload', id: 'photo_compteur', label: "Prendre en photo l'installation" })) } },
+    { type: 'code', code: { language: 'json', rich_text: rtS(JSON.stringify({ type: 'radio_group', id: 'etat_materiel', label: 'État du matériel', options: ['Neuf', 'Usagé', 'Défectueux'] })) } },
+    { type: 'to_do', to_do: { rich_text: rtS('Zone dégagée'), checked: false } },
+    { type: 'code', code: { language: 'json', rich_text: rtS('{ pas du json') } }
+  ]);
+
+  // Aide pour les tests : arbre du rapport lisible.
+  w.reportCallout = () => w.kids[key(PAGE)].map((i) => w.blocks[i]).find((b) => b.type === 'callout' && !b.archived);
+  w.childrenOf = (id) => w.kids[key(id)].map((i) => w.blocks[i]).filter((b) => !b.archived);
+  w.text = (b) => (b[b.type].rich_text || []).map((t) => t.plain_text).join('');
+  w.visibleReport = () => {
+    const c = w.reportCallout();
+    return w.childrenOf(c.id).filter((b) => b.type !== 'toggle');
+  };
+  w.stateJson = () => {
+    const c = w.reportCallout();
+    const t = w.childrenOf(c.id).find((b) => b.type === 'toggle');
+    const code = w.childrenOf(t.id).find((b) => b.type === 'code');
+    return code[code.type].rich_text.map((x) => x.plain_text).join('');
+  };
+  w.stateRich = () => {
+    const c = w.reportCallout();
+    const t = w.childrenOf(c.id).find((b) => b.type === 'toggle');
+    return w.childrenOf(t.id).find((b) => b.type === 'code').code.rich_text;
+  };
+  w.writes = () => w.calls.filter((c) => c.method !== 'GET' && !/\/query$/.test(c.path) && !c.path.startsWith('/file_uploads'));
+  w.count = (method, re) => w.calls.filter((c) => c.method === method && re.test(c.path)).length;
+
+  const res = (code, body) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(body), getHeaders: () => ({}) });
+  const err = (code, message) => res(code, { object: 'error', status: code, code: code === 404 ? 'object_not_found' : 'validation_error', message });
+
+  const UrlFetchApp = {
+    fetch(url, opts = {}) {
+      const [p0, qs] = url.replace('https://api.notion.com/v1', '').split('?');
+      const method = (opts.method || 'get').toUpperCase();
+      const body = opts.payload && typeof opts.payload === 'string' ? JSON.parse(opts.payload) : opts.payload;
+      w.calls.push({ method, path: p0, body });
+      assert.equal(opts.headers.Authorization, 'Bearer ' + TOKEN);
+      assert.equal(opts.headers['Notion-Version'], '2022-06-28');
+      if (w.failNext && w.failNext.test(method + ' ' + p0)) { const f = w.failNext; w.failNext = null; return res(f.code || 500, { message: 'panne simulée' }); }
+
+      if (method === 'POST' && p0 === `/databases/${DB}/query`) {
+        const n = body.filter.unique_id && body.filter.unique_id.equals;
+        if (n !== 252) return res(200, { results: [] });
+        return res(200, { results: [{
+          id: dash(PAGE), url: 'https://notion.so/x', last_edited_time: '2026-10-19T08:00:00Z',
+          properties: {
+            Nom: { type: 'title', title: [{ plain_text: 'Remplacement compteur' }] },
+            ID: { type: 'unique_id', unique_id: { prefix: 'FI', number: 252 } },
+            Client: { type: 'rich_text', rich_text: [{ plain_text: 'Dupont' }] },
+            Statut: { type: 'status', status: { name: 'À faire' } }
+          } }] });
+      }
+      if (method === 'GET' && p0 === `/pages/${PAGE}`) {
+        return res(200, { parent: { database_id: w.pageDb || dash(DB) }, archived: false });
+      }
+
+      let m = p0.match(/^\/blocks\/([^/]+)\/children$/);
+      if (m) {
+        const pid = key(m[1]);
+        const parent = w.blocks[pid];
+        if (!parent || dead(parent)) return err(404, 'Could not find block with ID: ' + m[1]);
+        if (method === 'GET') {
+          const q = new URLSearchParams(qs || '');
+          const size = Math.min(Number(q.get('page_size') || 100), w.pageSize);
+          const live = w.kids[pid].filter((i) => !w.blocks[i].archived);
+          const start = Number(q.get('start_cursor') || 0);
+          const slice = live.slice(start, start + size);
+          const more = start + size < live.length;
+          return res(200, { results: slice.map((i) => w.blocks[i]), has_more: more, next_cursor: more ? String(start + size) : null });
+        }
+        if (method === 'PATCH') {
+          assert.ok(Array.isArray(body.children) && body.children.length >= 1 && body.children.length <= 100, '1 à 100 enfants par requête');
+          body.children.forEach((c) => validate(c, 1));
+          const after = body.position ? (body.position.type === 'after_block' ? body.position.after_block.id : null) : body.after;
+          if (body.position && w.positionMode !== 'both') return err(400, 'body failed validation: body.position should not exist');
+          if (body.after && w.positionMode === 'none') return err(400, 'body failed validation: body.after should not exist');
+          let at = w.kids[pid].length;
+          if (after) {
+            at = w.kids[pid].indexOf(key(after));
+            if (at < 0) return err(400, 'Could not find the block to insert after');
+            at += 1;
+          }
+          const made = body.children.map((c) => create(pid, c));
+          w.kids[pid].splice(at, 0, ...made.map((b) => b.id));
+          return res(200, { results: made.map((b) => w.blocks[b.id]) });
+        }
+      }
+
+      m = p0.match(/^\/blocks\/([^/]+)$/);
+      if (m) {
+        const id = key(m[1]);
+        const b = w.blocks[id];
+        if (!b) return err(404, 'Could not find block with ID: ' + m[1]);
+        if (method === 'PATCH') {
+          if (dead(b)) return err(400, "Can't edit block that is archived. You must unarchive the block before editing.");
+          const t = Object.keys(body).find((k) => k !== 'archived');
+          if (t !== b.type) return err(400, `Block type mismatch : ${b.type} / ${t}`);
+          validate({ type: t, [t]: body[t] }, 1);
+          b[t] = { ...b[t], ...withPlain(body[t]) };
+          return res(200, b);
+        }
+        if (method === 'DELETE') {
+          if (dead(b)) return err(400, "Can't edit block that is archived.");
+          b.archived = true;
+          return res(200, b);
+        }
+      }
+
+      if (method === 'POST' && p0 === '/file_uploads') {
+        const id = w.id();
+        w.uploads[id] = { ...body, sent: false };
+        return res(200, { id, status: 'pending' });
+      }
+      m = p0.match(/^\/file_uploads\/([^/]+)\/send$/);
+      if (m && method === 'POST') {
+        assert.ok(opts.payload.file && opts.payload.file.getContentType, 'multipart : champ file attendu');
+        assert.equal(opts.contentType, undefined, 'pas de Content-Type forcé sur le multipart');
+        w.uploads[m[1]].sent = true;
+        return res(200, { id: m[1], status: 'uploaded' });
+      }
+      return err(404, 'route inconnue du simulateur : ' + method + ' ' + p0);
+    }
+  };
+
+  /* ── Drive ── */
+  const iter = (arr) => { let i = 0; return { hasNext: () => i < arr.length, next: () => arr[i++] }; };
+  const mkFolder = (id, name, parent) => ({
+    id, name, parent, trashed: false,
+    getId() { return id; }, getName() { return name; },
+    setTrashed(v) { this.trashed = v; },
+    getParents() { return iter(parent ? [w.folders[parent]] : []); },
+    getFiles() { return iter(Object.values(w.drive).filter((f) => f.parent === id && !f.trashed)); },
+    getFolders() { return iter(Object.values(w.folders).filter((f) => f.parent === id && !f.trashed)); },
+    getFilesByName(n) { return iter(Object.values(w.drive).filter((f) => f.parent === id && f.name === n && !f.trashed)); },
+    getFoldersByName(n) { return iter(Object.values(w.folders).filter((f) => f.parent === id && f.name === n && !f.trashed)); },
+    createFolder(n) { const f = mkFolder(w.fid('fold'), n, id); w.folders[f.id] = f; return f; },
+    createFile(blob) { const f = mkFile(w.fid('file'), blob.getName(), id, blob); w.drive[f.id] = f; return f; }
+  });
+  const mkFile = (id, name, parent, blob) => ({
+    id, name, parent, trashed: false, blob, created: new Date(),
+    getId() { return id; }, getName() { return name; }, isTrashed() { return this.trashed; },
+    setTrashed(v) { this.trashed = v; }, getBlob() { return blob; },
+    getParents() { return iter(w.folders[parent] ? [w.folders[parent]] : []); },
+    getDateCreated() { return this.created; }
+  });
+  w.folders[ROOT] = mkFolder(ROOT, 'OUIDROP photos', null);
+  w.mkFile = mkFile;
+
+  const newBlob = (bytes, mime, name) => ({
+    bytes, mime, name,
+    getName() { return this.name; }, setName(n) { this.name = n; return this; },
+    getContentType() { return this.mime; }, getBytes() { return this.bytes; }
+  });
+
+  let cache = {};
+  w.flushCache = () => { cache = {}; };
+  w.cacheKeys = () => Object.keys(cache);
+  const ctx = vm.createContext({
+    console, Logger: { log() {} }, UrlFetchApp,
+    ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ s, setMimeType() { return this; }, getContent() { return s; } }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => ({ NOTION_TOKEN: TOKEN, NOTION_DB_ID: DB, DRIVE_FOLDER_ID: ROOT, APP_TOKEN: 'secret', TEST_PAGE_ID: PAGE }[k] ?? null) }) },
+    CacheService: { getScriptCache: () => ({
+      get: (k) => cache[k] ?? null,
+      put: (k, v) => { assert.ok(Buffer.byteLength(String(v)) <= 100 * 1024, 'CacheService : 100 Ko maximum par valeur'); cache[k] = String(v); },
+      remove: (k) => { delete cache[k]; },
+      removeAll: (ks) => ks.forEach((k) => delete cache[k])
+    }) },
+    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    Utilities: {
+      sleep() {}, newBlob, base64Decode: (s) => { if (/[^A-Za-z0-9+/=]/.test(s)) throw new Error('bad b64'); return [...Buffer.from(s, 'base64')]; },
+      formatDate: (d) => new Date(d).toISOString().slice(0, 16).replace('T', ' ')
+    },
+    DriveApp: {
+      getFolderById: (id) => { if (!w.folders[id]) throw new Error('not found'); return w.folders[id]; },
+      getFileById: (id) => { if (!w.drive[id] || w.drive[id].purged) throw new Error('not found'); return w.drive[id]; }
+    },
+    Buffer, __w: w
+  });
+  vm.runInContext('Date.now = () => __w.now', ctx);
+  w.ctx = ctx;
+  return w;
+}
+
+export const run = (ctx, src) => vm.runInContext(src, ctx);
+export const out = (o) => JSON.parse(o.getContent());
+
+export function api(w) {
+  const post = (o) => out(run(w.ctx, `doPost({postData:{contents:${JSON.stringify(JSON.stringify({ appToken: 'secret', ...o }))}}})`));
+  const get = (o) => out(run(w.ctx, `doGet({parameter:${JSON.stringify({ appToken: 'secret', ...o })}})`));
+  return { post, get };
+}
+
+// Un « téléphone » : identité, horloge propre (décalage en ms), dernière révision connue.
+export function phone(w, name, clientId, skewMs = 0) {
+  const { post, get } = api(w);
+  const [firstName, lastName] = name.split(' ');
+  const p = {
+    name, clientId, skewMs, baseRev: 0, schema: null, report: null,
+    now: () => w.now + skewMs,
+    sync(changes = {}, extra = {}) {
+      const r = post({
+        action: 'syncReport', notionPageId: PAGE, reference: 'FI-252', clientId, author: { firstName, lastName },
+        clientNow: w.now + skewMs, baseRev: p.baseRev, schema: p.schema, changes, ...extra
+      });
+      if (r.ok && r.data.report) { p.baseRev = r.data.report.rev; p.report = r.data.report; }
+      return r;
+    },
+    load() {
+      const r = get({ action: 'getIntervention', id: 'FI-252' });
+      if (r.ok) { p.schema = r.data.schema; p.report = r.data.report; if (r.data.report) p.baseRev = r.data.report.rev; }
+      return r;
+    },
+    poll() { return get({ action: 'getReport', pageId: PAGE, sinceRev: p.baseRev, clientId, name }); },
+    at: (offsetMs = 0) => w.now + skewMs + offsetMs,
+    upload(mediaId) {
+      return post({ action: 'uploadMedia', fileData: PNG_B64, fileName: mediaId + '.png', mimeType: 'image/png', mediaId, reference: 'FI-252' }).data.fileId;
+    }
+  };
+  return p;
+}

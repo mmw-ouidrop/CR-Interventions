@@ -1,0 +1,48 @@
+/* Charte graphique OUIDROP 2026 — jetons de design
+   Chaque couleur a une fonction précise ; aucune n'est purement décorative. */
+:root {
+  /* Couleurs principales */
+  --c-navy: #0d2e5b;      /* Bleu foncé  : logo, fonds principaux, textes, éléments structurants */
+  --c-indigo: #1e3a8a;    /* Bleu intense: liens, éléments interactifs (boutons) */
+  --c-blue: #3b82f6;      /* Bleu vif    : accents, focus, surbrillance (3,7:1 sur blanc → pas de petit texte) */
+  /* Couleurs secondaires */
+  --c-ice: #e5eaf5;       /* Bleu clair  : fonds, zones d'interface, aplats secondaires */
+  --c-red: #e22424;       /* Rouge signal: points d'attention uniquement */
+  /* Neutres relevés dans la charte */
+  --c-paper: #fdfbfb;     /* fond de page */
+  --c-ink: #3a3a3b;       /* texte courant */
+  --c-white: #ffffff;
+  --c-line: #cdd6ea;      /* filets (bleu clair assombri) */
+
+  /* Typographie : Saira Condensed = titres, boutons, chiffres ; Inter = texte courant */
+  --f-display: 'Saira Condensed', 'Arial Narrow', sans-serif;
+  --f-body: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* Hiérarchie MOBILE (charte p. 12) */
+  --fs-h1: 48px;  --lh-h1: 0.95;  --ls-h1: -0.02em;
+  --fs-h2: 36px;  --lh-h2: 1;
+  --fs-h3: 28px;  --lh-h3: 1.05;
+  --fs-h4: 28px;  --lh-h4: 1.05;
+  --fs-body: 16px;  --lh-body: 1.5;
+  --fs-small: 14px; --lh-small: 1.45;
+  --fs-cta: 16px;
+
+  /* Espacement & forme */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px;
+  --radius: 6px;
+  --tap: 48px;             /* cible tactile minimale */
+  --focus: 0 0 0 3px #fff, 0 0 0 6px var(--c-blue);
+}
+
+/* Hiérarchie DESKTOP (charte p. 11) */
+@media (min-width: 768px) {
+  :root {
+    --fs-h1: 72px;  --lh-h1: 0.9;
+    --fs-h2: 56px;  --lh-h2: 0.95;
+    --fs-h3: 40px;  --lh-h3: 1;
+    --fs-h4: 28px;  --lh-h4: 1.1;
+    --fs-body: 18px;
+    --fs-small: 16px; --lh-small: 1.4;
+    --fs-cta: 18px;
+  }
+}
