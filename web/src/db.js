@@ -63,7 +63,7 @@ export class LockedError extends Error {
 export class NotFoundError extends Error {
   constructor(what) {
     super('Introuvable : ' + what)
-    this.name = 'NotFoundError'
+    this.name = 'MissionNotFoundError'
     this.code = 'NOT_FOUND'
   }
 }
