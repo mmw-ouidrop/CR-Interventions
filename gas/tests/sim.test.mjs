@@ -1,5 +1,5 @@
 // Banc de test de Code.gs + Report.gs (protocole v2 : rapport partagé).
-// Lancer :  node --test tests/sim.test.mjs
+// Lancer (depuis gas/) :  node --test "tests/*.test.mjs"
 // Notion et Drive sont simulés (voir fake-notion.mjs) : on vérifie la logique du
 // script, pas le contrat réel de l'API — pour ça, voir testNotionCapabilities().
 import test from 'node:test';
@@ -37,6 +37,44 @@ test('getIntervention : token, propriétés, template, schéma', () => {
   assert.equal(r.data.warnings[0].code, 'INVALID_JSON');
   assert.equal(get({ action: 'getIntervention', id: 'FI-999' }).error.code, 'NOT_FOUND');
   assert.equal(get({ action: 'getIntervention', id: '???' }).error.code, 'BAD_REQUEST');
+});
+
+test('ordre et masquage des propriétés : propriétés de script « | », colonnes non citées à la suite', () => {
+  const w = world(); const { get } = api(w);
+  const labels = () => get({ action: 'getIntervention', id: 'FI-252' }).data.properties.map((p) => p.label);
+  assert.deepEqual(labels(), ['Nom', 'ID', 'Client', 'Statut'], 'sans configuration : ordre de Notion');
+  w.props = { PROPERTY_ORDER: ' Statut | Client ', HIDDEN_PROPERTIES: 'ID' };
+  assert.deepEqual(labels(), ['Statut', 'Client', 'Nom']);
+  w.props = { PROPERTY_ORDER: 'Inconnue|Nom' };
+  assert.deepEqual(labels(), ['Nom', 'ID', 'Client', 'Statut'], 'un nom inconnu est sans effet');
+  // masquer une colonne n'empêche pas de retrouver la mission par son ID
+  w.props = { HIDDEN_PROPERTIES: 'ID' };
+  assert.equal(get({ action: 'getIntervention', id: 'FI-252' }).data.reference, 'FI-252');
+});
+
+test('définitions de champs douteuses : avertissements précis, rien n’est retiré', () => {
+  const w = world(); const { get } = api(w);
+  const rt = w.rt;
+  const block = (o) => ({ type: 'code', code: { language: 'json', rich_text: rt(JSON.stringify(o)) } });
+  w.seedChildren(PAGE, [
+    block([
+      { type: 'text', id: 'ok_champ', label: 'Correct' },
+      { type: 'texte', id: 'type_inconnu', label: 'Faux type' },
+      { type: 'text', id: 'u_reserve', label: 'Préfixe réservé' },
+      { type: 'text', id: 'avec espace', label: 'Id invalide' },
+      { type: 'radio_group', id: 'sans_options', label: 'Sans options' },
+      { type: 'select', id: 'trop_court', label: 'Une seule', options: ['A'] },
+      { type: 'checkbox_group', id: 'bon_choix', label: 'Bon', options: ['A', 'B'] },
+      { type: 'text', id: 'ok_champ', label: 'Doublon' }
+    ])
+  ]);
+  const r = get({ action: 'getIntervention', id: 'FI-252' }).data;
+  const codes = r.warnings.map((x) => x.code + ':' + (x.id || ''));
+  assert.deepEqual(codes.filter((c) => !c.startsWith('INVALID_JSON')).sort(), [
+    'BAD_ID:avec espace', 'BAD_OPTIONS:sans_options', 'BAD_OPTIONS:trop_court',
+    'DUPLICATE_ID:', 'RESERVED_ID:u_reserve', 'UNKNOWN_TYPE:type_inconnu'
+  ].sort());
+  assert.equal(r.templateBlocks.filter((b) => b.kind === 'component').length, 3 + 8, 'tous les champs sont conservés (3 du template de base + 8)');
 });
 
 /* ═════════════════════════ Création & mise à jour en place ═════════════════════════ */
@@ -535,4 +573,13 @@ test('testNotionCapabilities s’exécute de bout en bout sur le simulateur et n
   const w = world();
   run(w.ctx, 'testNotionCapabilities()');
   assert.equal(w.kids[Object.keys(w.kids)[0]].filter((i) => !w.blocks[i].archived && w.blocks[i].type === 'callout').length, 0);
+});
+
+test('testTemplate (Apps Script) : résumé lisible et avertissements, sans planter', () => {
+  const w = world();
+  const logs = [];
+  w.ctx.Logger = { log: (f, ...a) => logs.push(a.reduce((t, x) => t.replace('%s', x), f)) };
+  run(w.ctx, 'testTemplate()');
+  assert.match(logs[0], /^Fiche FI-252 : 3 champ\(s\), 1 intertitre\(s\), 4 propriété\(s\)/);
+  assert.ok(logs.some((l) => l.includes('INVALID_JSON')));
 });

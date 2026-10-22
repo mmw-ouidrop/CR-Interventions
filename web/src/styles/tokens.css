@@ -31,7 +31,53 @@
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px;
   --radius: 6px;
   --tap: 48px;             /* cible tactile minimale */
-  --focus: 0 0 0 3px #fff, 0 0 0 6px var(--c-blue);
+
+
+  /* ── Jetons SÉMANTIQUES : c'est eux qu'utilisent les composants (jamais --c-* directement),
+        pour que le thème sombre ne change que cette section. Contrastes WCAG vérifiés :
+        texte ≥ 4,5:1, bordures de champs et focus ≥ 3:1. ── */
+  color-scheme: light;
+  --bg: var(--c-paper);
+  --surface: var(--c-white);
+  --surface-2: var(--c-ice);
+  --text: var(--c-ink);              /* 11,0:1 sur --bg */
+  --text-muted: #5b6477;             /* 5,8:1 */
+  --heading: var(--c-navy);          /* 13,1:1 */
+  --accent: var(--c-indigo);         /* liens, texte interactif : 10,0:1 */
+  --accent-hover: var(--c-navy);
+  --line: var(--c-line);             /* filets décoratifs */
+  --line-strong: #76859f;            /* bordures de champs : 3,7:1 */
+  --btn-bg: var(--c-indigo);
+  --btn-text: var(--c-white);
+  --btn-hover-bg: var(--c-navy);
+  --danger: var(--c-red);            /* barre/pastille d'alerte, jamais du petit texte */
+  --ring: var(--c-blue);
+  --focus: 0 0 0 3px var(--surface), 0 0 0 6px var(--ring);
+  --top-bg: var(--c-navy);           /* bandeau de marque : identique dans les deux thèmes */
+  --top-text: var(--c-white);
+  --top-sub: var(--c-ice);
+}
+
+/* Thème sombre : charte déclinée sur fond bleu nuit (le logo repasse en blanc, déjà le cas dans le bandeau) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #08172e; --surface: #0f2444; --surface-2: #17305a;
+    --text: #e6ebf5; --text-muted: #a9b6cf; --heading: #ffffff;
+    --accent: #93b4ff; --accent-hover: #ffffff;
+    --line: #2f4a7a; --line-strong: #5f80b8;
+    --btn-bg: #e5eaf5; --btn-text: #0d2e5b; --btn-hover-bg: #ffffff;
+    --danger: #ff6b6b; --ring: #6ea0ff;
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #08172e; --surface: #0f2444; --surface-2: #17305a;
+  --text: #e6ebf5; --text-muted: #a9b6cf; --heading: #ffffff;
+  --accent: #93b4ff; --accent-hover: #ffffff;
+  --line: #2f4a7a; --line-strong: #5f80b8;
+  --btn-bg: #e5eaf5; --btn-text: #0d2e5b; --btn-hover-bg: #ffffff;
+  --danger: #ff6b6b; --ring: #6ea0ff;
 }
 
 /* Hiérarchie DESKTOP (charte p. 11) */

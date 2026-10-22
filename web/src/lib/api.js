@@ -70,6 +70,10 @@ export const api = {
   uploadMedia: ({ fileData, fileName, mimeType, mediaId, reference }) =>
     post({ action: 'uploadMedia', fileData, fileName, mimeType, mediaId, reference }, 90000),
 
+  // Relève légère des modifications des collègues (aucun appel à Notion tant que rien n'a bougé).
+  getReport: ({ pageId, sinceRev, clientId, name }) =>
+    get({ action: 'getReport', pageId, sinceRev: String(sinceRev ?? ''), clientId, name }, 20000),
+
   // Peut durer longtemps (transfert des photos vers Notion) : le GAS s'arrête à 6 min.
   syncReport: (payload) => post({ action: 'syncReport', ...payload }, 330000)
 }

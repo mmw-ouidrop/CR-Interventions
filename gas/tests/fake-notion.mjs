@@ -20,7 +20,7 @@ export function makeWorld() {
   const w = {
     calls: [], blocks: {}, kids: {}, drive: {}, folders: {}, uploads: {}, seq: 0, now: Date.parse('2026-10-20T08:00:00Z'),
     positionMode: 'both',          // both | after-only | none : ce que « Notion » accepte
-    pageDb: null, failNext: null, pageSize: 100
+    pageDb: null, failNext: null, pageSize: 100, props: {}
   };
   w.id = () => dash(String(++w.seq).padStart(32, '0'));
   w.fid = (p) => p + '_' + String(++w.seq).padStart(20, '0');
@@ -243,7 +243,7 @@ export function makeWorld() {
   const ctx = vm.createContext({
     console, Logger: { log() {} }, UrlFetchApp,
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ s, setMimeType() { return this; }, getContent() { return s; } }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => ({ NOTION_TOKEN: TOKEN, NOTION_DB_ID: DB, DRIVE_FOLDER_ID: ROOT, APP_TOKEN: 'secret', TEST_PAGE_ID: PAGE }[k] ?? null) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => ({ NOTION_TOKEN: TOKEN, NOTION_DB_ID: DB, DRIVE_FOLDER_ID: ROOT, APP_TOKEN: 'secret', TEST_PAGE_ID: PAGE, ...w.props }[k] ?? null) }) },
     CacheService: { getScriptCache: () => ({
       get: (k) => cache[k] ?? null,
       put: (k, v) => { assert.ok(Buffer.byteLength(String(v)) <= 100 * 1024, 'CacheService : 100 Ko maximum par valeur'); cache[k] = String(v); },

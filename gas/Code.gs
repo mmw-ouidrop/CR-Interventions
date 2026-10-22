@@ -86,11 +86,20 @@ const REPORT_ICON = '📋';
 const DRIVE_ID_RE = /^[A-Za-z0-9_-]{20,80}$/;   // forme d'un fileId Drive
 const TEMP_RETENTION_DAYS = 14;                  // purge des fichiers de transit orphelins
 
-// Colonnes Notion à ne pas exposer à la PWA (noms exacts).
+// Colonnes Notion à ne pas exposer à la PWA (noms exacts). Valeur par défaut ;
+// la propriété de script HIDDEN_PROPERTIES (noms séparés par « | ») la remplace.
 const HIDDEN_PROPERTIES = [];
-// Colonnes à afficher en premier, dans cet ordre (l'API Notion ne garantit
-// pas l'ordre des colonnes de la base).
+// Colonnes à afficher en premier, dans cet ordre. L'API Notion ne documente aucun
+// ordre pour les propriétés d'une page : on le fixe ici (ou par la propriété de
+// script PROPERTY_ORDER, noms séparés par « | »). Les colonnes non citées suivent.
 const PROPERTY_ORDER = [];
+
+// Types de champs que le formulaire sait afficher (voir le mémo de templates).
+const COMPONENT_TYPES = ['text', 'textarea', 'number', 'checkbox', 'radio_group',
+  'select', 'checkbox_group', 'date', 'image_upload'];
+const CHOICE_TYPES = ['radio_group', 'select', 'checkbox_group'];
+const COMPONENT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const RESERVED_ID_RE = /^(u_|todo_|S:)/;
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;   // taille décodée max d'une photo
 const MAX_NEST_DEPTH = 2;                    // profondeur de lecture des toggles
@@ -262,8 +271,9 @@ function getIntervention_(idParam) {
 
   // 1) Propriétés (colonnes) — génériques, sans nom de colonne en dur.
   let properties = [];
+  const hiddenProperties = nameList_('HIDDEN_PROPERTIES', HIDDEN_PROPERTIES);
   Object.keys(page.properties).forEach(function (name) {
-    if (HIDDEN_PROPERTIES.indexOf(name) > -1) return;
+    if (hiddenProperties.indexOf(name) > -1) return;
     const prop = page.properties[name];
     const value = formatProperty_(prop);
     if (value === null || value === undefined) return;
@@ -362,11 +372,19 @@ function referenceOf_(page, fallback) {
   return fallback;
 }
 
+// Liste de noms de colonnes : propriété de script (séparée par « | ») sinon constante.
+function nameList_(key, fallback) {
+  const raw = cfg_(key, '');
+  if (!raw) return fallback;
+  return raw.split('|').map(function (x) { return x.trim(); }).filter(Boolean);
+}
+
 function sortProperties_(list) {
-  if (!PROPERTY_ORDER.length) return list;
+  const order = nameList_('PROPERTY_ORDER', PROPERTY_ORDER);
+  if (!order.length) return list;
   const rank = function (p) {
-    const i = PROPERTY_ORDER.indexOf(p.label);
-    return i === -1 ? PROPERTY_ORDER.length : i;
+    const i = order.indexOf(p.label);
+    return i === -1 ? order.length : i;
   };
   return list
     .map(function (p, i) { return { p: p, i: i }; })
@@ -543,6 +561,27 @@ function convertBlocks_(blocks, ctx, depth) {
   }
 }
 
+// Signale (sans rien supprimer) les définitions de champs douteuses : le
+// responsable les voit au chargement au lieu de les découvrir sur le terrain.
+function checkComponent_(block, c, ctx) {
+  const warn = function (code, message) {
+    ctx.warnings.push({ blockId: block.id, code: code, id: String(c.id), message: message });
+  };
+  const id = String(c.id);
+  if (!COMPONENT_ID_RE.test(id)) {
+    warn('BAD_ID', 'id « ' + id + ' » : lettres, chiffres, _ et - seulement, 64 caractères au plus');
+  } else if (RESERVED_ID_RE.test(id)) {
+    warn('RESERVED_ID', 'id « ' + id + ' » : les préfixes u_, todo_ et S: sont réservés');
+  }
+  if (COMPONENT_TYPES.indexOf(c.type) === -1) {
+    warn('UNKNOWN_TYPE', 'type « ' + c.type + ' » inconnu (types : ' + COMPONENT_TYPES.join(', ') + ')');
+  }
+  if (CHOICE_TYPES.indexOf(c.type) > -1) {
+    const n = Array.isArray(c.options) ? c.options.length : 0;
+    if (n < 2 || n > 20) warn('BAD_OPTIONS', 'le champ « ' + id + ' » demande de 2 à 20 options (' + n + ' trouvée(s))');
+  }
+}
+
 function parseJsonComponents_(block, src, ctx) {
   let parsed;
   try {
@@ -566,6 +605,7 @@ function parseJsonComponents_(block, src, ctx) {
       ctx.warnings.push({ blockId: block.id, code: 'DUPLICATE_ID', message: 'id déjà utilisé : ' + c.id });
     }
     ctx.ids[c.id] = true;
+    checkComponent_(block, c, ctx);
     // `kind` et `blockId` écrasent d'éventuelles clés homonymes du JSON.
     ctx.out.push(Object.assign({}, c, { kind: 'component', blockId: block.id }));
   });
@@ -856,7 +896,27 @@ function testSetup() {
 
 // 2) Simule la route 1 (adapter l'ID).
 function testGetIntervention() {
-  Logger.log(JSON.stringify(getIntervention_('FI-252'), null, 2));
+  Logger.log(JSON.stringify(getIntervention_(cfg_('TEST_REFERENCE', 'FI-252')), null, 2));
+}
+
+// 2 bis) Contrôle d'un template : lit la fiche (propriété de script TEST_REFERENCE,
+//    par défaut FI-252) et affiche un résumé + un avertissement par ligne.
+function testTemplate() {
+  const r = getIntervention_(cfg_('TEST_REFERENCE', 'FI-252'));
+  const fields = r.schema.filter(function (s) { return s.k === 'f'; });
+  const sections = r.schema.length - fields.length;
+  Logger.log('Fiche %s : %s champ(s), %s intertitre(s), %s propriété(s) en lecture seule.',
+    r.reference, fields.length, sections, r.properties.length);
+  fields.forEach(function (f) {
+    Logger.log('  • %s  [%s]  %s', f.id, f.type, f.label);
+  });
+  if (!r.warnings.length) {
+    Logger.log('Aucun avertissement.');
+  } else {
+    r.warnings.forEach(function (w) {
+      Logger.log('⚠ %s%s : %s', w.code, w.id ? ' (' + w.id + ')' : '', w.message);
+    });
+  }
 }
 
 

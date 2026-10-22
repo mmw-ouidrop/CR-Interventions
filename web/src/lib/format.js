@@ -22,19 +22,35 @@ export function formatPropertyValue(prop) {
   return s
 }
 
+// Valeur d'un champ du formulaire, lisible (conflits, récapitulatifs).
+export function formatFieldValue(v) {
+  if (v === null || v === undefined || v === '') return '—'
+  if (typeof v === 'boolean') return v ? 'Oui' : 'Non'
+  if (Array.isArray(v)) return v.length ? v.join(', ') : '—'
+  return String(v)
+}
+
+export function formatTime(ts) {
+  if (!ts) return ''
+  return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(new Date(ts))
+}
+
 export function formatDateTime(ts) {
   if (!ts) return ''
   return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(ts))
 }
 
-// Libellé et ton de la pastille d'état d'une mission (voir db.js pour la sémantique).
+// Libellé et ton de la pastille d'état d'une mission (modèle v2, voir db.js / lib/shared.js).
+//   « à envoyer » = saisies locales pas encore dans Notion ; « envoi en échec » = dernière tentative refusée.
 export function missionStatus(rec) {
-  if (rec.status === 'validated') {
-    if (rec.syncing) return { label: 'Envoi en cours…', tone: 'info' }
-    if (rec.syncStatus === 'error') return { label: "Envoi en échec", tone: 'danger' }
-    if (rec.syncStatus === 'pending') return { label: 'Validé · à envoyer', tone: 'info' }
-    return { label: '✓ Envoyé', tone: 'done' }
+  const validated = (rec.pendingStatus ? rec.pendingStatus.value : rec.shared && rec.shared.status) === 'validated'
+  const pending = rec.needsSync === 1
+  if (rec.syncing) return { label: 'Envoi en cours…', tone: 'info' }
+  if (pending && rec.lastError && (rec.attempts || 0) > 0) {
+    return { label: validated ? 'Validé · envoi en échec' : 'Envoi en échec', tone: 'danger' }
   }
-  if (rec.lastSyncAt) return { label: 'En modification', tone: 'neutral' }
+  if (validated) return pending ? { label: 'Validé · à envoyer', tone: 'info' } : { label: '✓ Validé', tone: 'done' }
+  if (pending) return { label: rec.lastSyncAt ? 'Modifié · à envoyer' : 'Brouillon · à envoyer', tone: 'info' }
+  if (rec.lastSyncAt || (rec.baseRev || 0) > 0) return { label: 'Enregistré', tone: 'neutral' }
   return { label: 'Brouillon', tone: 'neutral' }
 }

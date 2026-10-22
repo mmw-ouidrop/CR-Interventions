@@ -34,18 +34,22 @@ Flux : **PWA ⇄ Google Apps Script ⇄ Notion**, avec Drive comme zone de trans
    | `APP_TOKEN` | chaîne aléatoire longue (la même ira dans la PWA) |
    | `REF_PROPERTY_NAME` | optionnel, défaut `ID` |
    | `REF_PROPERTY_TYPE` | optionnel, défaut `unique_id` |
+   | `PROPERTY_ORDER` | optionnel : noms des colonnes à afficher en premier, séparés par la barre verticale (ex. `Nom\|Client\|Adresse\|Statut`, à saisir sans les `\`). L'API Notion ne donne aucun ordre fiable : on le fixe ici. Les colonnes non citées suivent. |
+   | `HIDDEN_PROPERTIES` | optionnel : noms des colonnes à ne jamais envoyer à l'application, séparés par la barre verticale |
    | `TEST_PAGE_ID` | optionnel : ID d'une page de test de la base (pour `testNotionCapabilities`) |
+   | `TEST_REFERENCE` | optionnel : ID court d'une fiche de test, ex. `FI-252` (pour `testTemplate`) |
 
 4. Exécuter **`testSetup`** (accorder les autorisations) : vérifie Drive et liste les colonnes Notion.
    Puis **`testNotionFileUpload`** (API d'envoi de fichiers), **`testNotionCapabilities`** (insertion à une
    position, mise à jour en place, bloc de données de 2000+ caractères : **à faire avant tout usage réel**,
-   c'est la seule vérification contre le vrai Notion) et **`testGetIntervention`** (adapter l'ID).
+   c'est la seule vérification contre le vrai Notion), **`testTemplate`** (lit une fiche, liste les champs
+   trouvés et signale les erreurs du template : voir `docs/`) et **`testGetIntervention`** (contenu complet lu).
 5. Déployer ▸ Nouveau déploiement ▸ Application Web — *Exécuter en tant que : Moi*,
    *Accès : Tout le monde*. Copier l'URL `/exec`.
    Après chaque modification du code : *Gérer les déploiements ▸ Modifier ▸ Nouvelle version*.
 6. Optionnel : déclencheur quotidien sur `purgeStaleTempFiles` (nettoie les photos jamais synchronisées après 14 jours).
 
-Test hors Apps Script : `cd gas && node --test tests/sim.test.mjs` (32 scénarios sur un Notion et un Drive simulés :
+Test hors Apps Script : `cd gas && node --test "tests/*.test.mjs"` (37 scénarios sur un Notion et un Drive simulés :
 fusion à deux techniciens, validation partagée, photos par lots, champs ajoutés, évolutions du template,
 suppressions manuelles dans Notion, limites de l'API). Il vérifie la logique du script, pas le vrai Notion.
 
@@ -55,7 +59,7 @@ suppressions manuelles dans Notion, limites de l'API). Il vérifie la logique du
 cd web
 cp .env.example .env.local     # renseigner VITE_GAS_URL et VITE_APP_TOKEN
 npm install
-npm test                       # tests de la couche données
+npm test                       # tests (données, synchro de bout en bout avec le vrai code serveur, affichage)
 npm run dev                    # développement
 npm run build && npm run preview
 ```
@@ -65,6 +69,57 @@ npm run build && npm run preview
 
 **Première visite en ligne obligatoire** (installation du cache). Sur iPhone : *Partager ▸ Sur l'écran d'accueil*
 pour que les données ne soient pas purgées par Safari.
+
+### Utilisation sur le terrain
+
+- **Nom** : à la première ouverture l'application demande prénom + nom (modifiables dans *Réglages*, en bas de l'accueil).
+  Rien n'est envoyé dans Notion tant qu'il n'est pas renseigné ; les saisies, elles, sont déjà gardées sur l'appareil.
+- **Saisie** : chaque frappe est enregistrée sur l'appareil (aucun bouton « Enregistrer »). Notion est mis à jour
+  automatiquement dans la minute qui suit la première modification (fiche ouverte), puis toutes les 5 min tant qu'il y a du nouveau, et
+  immédiatement au retour du réseau, à la reprise de l'application, sur « Envoyer maintenant » et sur « Valider ».
+  En-tête du rapport Notion : état (En cours / Validé), dernier auteur, heure.
+- **Valider le CR** : vérifie les champs obligatoires (liste cliquable ; « Valider quand même » possible), fige le
+  formulaire et envoie tout. **Modifier à nouveau** le rouvre (pour tous les appareils).
+- **Photos** : réduites en JPEG sur l'appareil, envoyées progressivement par lots de 6, la validation partant après la
+  dernière. Les photos d'un collègue apparaissent comme vignettes « Prénom · heure » sans image (le serveur ne diffuse
+  pas de lien d'image) ; les vôtres s'affichent même hors ligne.
+- **À deux sur une fiche** : fusion champ par champ (la saisie la plus récente gagne). Le technicien écrasé voit
+  « X a modifié ce champ à 10:42 » avec **Remettre la mienne** / **Garder la sienne**. Si l'autre valide pendant que vous
+  éditez, vos saisies restent sur votre appareil et vous pouvez rouvrir.
+- **Actualiser** : récupère les champs ajoutés au template dans Notion ; les saisies ne sont jamais touchées.
+- **Ajouter un champ** : texte court/long, nombre, case, choix unique, photos. Visible des collègues, inscrit dans la section
+  « Ajouts terrain » du rapport.
+- **Lecture** : sections repliables avec compteur « remplis/total », *Masquer les champs remplis*, *Tout replier*, menu
+  *Aller à…*. Ces réglages sont propres à l'appareil et à la mission.
+- **Thème** : Auto / Clair / Sombre (*Réglages*). Auto suit le téléphone.
+
+### Données locales (IndexedDB, schéma v2)
+
+Une fiche locale contient les saisies (`fields`, avec heure et auteur, marquées `dirty` tant que le serveur ne les a pas
+acquittées), les champs ajoutés, les demandes de suppression, le dernier état partagé du serveur, la demande de
+validation/réouverture en attente et le suivi des envois (essais, prochain essai : attente 30 s ×2, jusqu'à 15 min).
+Les photos sont dans une file séparée (`media_queue`, Blob). La migration depuis la v1 est automatique. Rien n'est
+supprimé automatiquement de l'appareil.
+
+> **Note de vérification** : le code Vue n'a pas pu être compilé dans l'environnement de développement (pas d'accès au
+> registre npm) ; il a été contrôlé par analyse de syntaxe, mais le premier `npm run build` (GitHub Actions) est le vrai test.
+> En cas d'échec, copiez le journal de l'étape « build » : la correction est en général d'une ligne.
+
+### Propriétés en lecture seule : ordre, masquage, repli
+
+- **Ordre par défaut, pour tous** : propriété de script `PROPERTY_ORDER` (voir §2). L'API Notion ne documente aucun
+  ordre pour les propriétés d'une page ; il faut donc le déclarer une fois.
+- **Sur un appareil** : dans l'écran d'une mission, le bloc « Mission » se replie d'un appui sur son titre, et
+  « Personnaliser » permet de monter, descendre et masquer chaque champ (« Rétablir l'ordre d'origine » annule).
+  Ce réglage est enregistré sur l'appareil, s'applique à toutes les missions et ne modifie jamais Notion.
+- Une mission déjà chargée sur un appareil garde l'ordre reçu à son premier chargement ; la personnalisation sur
+  l'appareil, elle, agit tout de suite.
+
+### Créer des templates
+
+`docs/template-exemple.md` : template complet à coller dans une page Notion (il passe dans le test
+`gas/tests/template-example.test.mjs`). Le mémo de référence (blocs reconnus, types de champs, règles, dépannage)
+est le document « Mémo — Créer un template de CR dans Notion ».
 
 ### Publication sur GitHub Pages
 

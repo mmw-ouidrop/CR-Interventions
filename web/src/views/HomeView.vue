@@ -8,6 +8,8 @@ import { normalizeReference } from '../lib/ref.js'
 import { formatDateTime, missionStatus } from '../lib/format.js'
 import { online } from '../lib/online.js'
 import { DEFAULT_PREFIX } from '../config.js'
+import IdentityCard from '../components/IdentityCard.vue'
+import ThemeSwitch from '../components/ThemeSwitch.vue'
 
 const router = useRouter()
 const input = ref('')
@@ -53,6 +55,8 @@ async function open() {
 </script>
 
 <template>
+  <IdentityCard mode="gate" style="margin-bottom: var(--s-5)" />
+
   <h2>Ouvrir une mission</h2>
 
   <form class="card" @submit.prevent="open" novalidate>
@@ -85,18 +89,27 @@ async function open() {
       </li>
     </ul>
   </section>
+
+  <section class="card settings" aria-labelledby="settings-title" style="margin-top: var(--s-6)">
+    <h3 id="settings-title">Réglages</h3>
+    <h4 class="settings__h">Qui intervient</h4>
+    <IdentityCard mode="edit" />
+    <h4 class="settings__h">Affichage</h4>
+    <ThemeSwitch />
+  </section>
 </template>
 
 <style scoped>
+.settings__h { font-size: 22px; margin: var(--s-4) 0 var(--s-2); }
 .list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
 .row {
   display: flex; align-items: center; justify-content: space-between; gap: var(--s-3);
   min-height: var(--tap); padding: var(--s-3) var(--s-4);
-  background: var(--c-white); border: 1px solid var(--c-line); border-radius: var(--radius);
-  color: var(--c-ink); text-decoration: none;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  color: var(--text); text-decoration: none;
 }
-.row:hover { border-color: var(--c-indigo); }
+.row:hover { border-color: var(--accent); }
 .row__main { display: grid; min-width: 0; }
-.row__ref { font: 700 28px/1 var(--f-display); letter-spacing: 0.02em; color: var(--c-navy); }
+.row__ref { font: 700 28px/1 var(--f-display); letter-spacing: 0.02em; color: var(--heading); }
 .row__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

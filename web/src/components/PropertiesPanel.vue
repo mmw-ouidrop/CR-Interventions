@@ -100,7 +100,7 @@ const reset = () => (prefs.value = resetPrefs(prefs.value))
 .panel__toggle {
   display: inline-flex; align-items: center; gap: var(--s-2);
   min-height: var(--tap); padding: 0 var(--s-2) 0 0; margin: 0;
-  border: 0; background: transparent; color: var(--c-navy); cursor: pointer;
+  border: 0; background: transparent; color: var(--heading); cursor: pointer;
   font: inherit; text-align: left;
 }
 .panel__chevron { transition: transform .15s; flex: none; }
@@ -108,14 +108,14 @@ const reset = () => (prefs.value = resetPrefs(prefs.value))
 .panel__summary { flex: 1 1 auto; }
 .panel__edit {
   min-height: var(--tap); padding: 0 var(--s-3);
-  border: 2px solid var(--c-indigo); border-radius: var(--radius); background: transparent; color: var(--c-indigo);
+  border: 2px solid var(--accent); border-radius: var(--radius); background: transparent; color: var(--accent);
   font: 700 var(--fs-cta)/1 var(--f-display); letter-spacing: .02em; text-transform: uppercase; cursor: pointer;
 }
-.panel__edit:hover, .panel__edit[aria-pressed='true'] { background: var(--c-ice); color: var(--c-navy); border-color: var(--c-navy); }
+.panel__edit:hover, .panel__edit[aria-pressed='true'] { background: var(--surface-2); color: var(--heading); border-color: var(--heading); }
 .panel__body { margin-top: var(--s-3); }
 
 .props { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px var(--s-4); margin: 0; }
-.props dt { font: 600 var(--fs-small)/1.3 var(--f-body); color: var(--c-navy); margin-top: var(--s-3); }
+.props dt { font: 600 var(--fs-small)/1.3 var(--f-body); color: var(--heading); margin-top: var(--s-3); }
 .props dt:first-child { margin-top: 0; }
 .props dd { margin: 0; overflow-wrap: anywhere; }
 @media (min-width: 560px) {
@@ -124,19 +124,19 @@ const reset = () => (prefs.value = resetPrefs(prefs.value))
   .props dd { padding-top: var(--s-2); }
 }
 
-.edit { list-style: none; margin: var(--s-3) 0; padding: 0; border-top: 1px solid var(--c-line); }
-.edit__row { display: flex; align-items: center; gap: var(--s-2); border-bottom: 1px solid var(--c-line); }
+.edit { list-style: none; margin: var(--s-3) 0; padding: 0; border-top: 1px solid var(--line); }
+.edit__row { display: flex; align-items: center; gap: var(--s-2); border-bottom: 1px solid var(--line); }
 .edit__row--off .edit__label { opacity: .55; }
 .edit__show { display: flex; align-items: center; gap: var(--s-3); flex: 1 1 auto; min-width: 0; min-height: var(--tap); cursor: pointer; }
-.edit__show input { width: 24px; height: 24px; flex: none; accent-color: var(--c-indigo); }
+.edit__show input { width: 24px; height: 24px; flex: none; accent-color: var(--accent); }
 .edit__label { display: grid; min-width: 0; }
 .edit__preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .edit__moves { display: flex; flex: none; }
 .icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 44px; height: 44px; padding: 0;
-  border: 0; border-radius: var(--radius); background: transparent; color: var(--c-indigo); cursor: pointer;
+  border: 0; border-radius: var(--radius); background: transparent; color: var(--accent); cursor: pointer;
 }
-.icon-btn:hover:not(:disabled) { background: var(--c-ice); color: var(--c-navy); }
+.icon-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--heading); }
 .icon-btn:disabled { opacity: .3; cursor: not-allowed; }
 </style>

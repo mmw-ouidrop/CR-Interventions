@@ -12,6 +12,9 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import { router } from './router.js'
 import { requestPersistentStorage } from './lib/storage.js'
+import { initTheme } from './lib/theme.js'
+
+initTheme()
 
 createApp(App).use(router).mount('#app')
 requestPersistentStorage()
