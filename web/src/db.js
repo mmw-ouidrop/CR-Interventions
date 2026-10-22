@@ -63,6 +63,8 @@ export class LockedError extends Error {
 export class NotFoundError extends Error {
   constructor(what) {
     super('Introuvable : ' + what)
+    // Pas 'NotFoundError' : c'est un nom d'erreur IndexedDB que Dexie reconnaît et
+    // enveloppe dans une DexieError à la sortie d'une transaction (instanceof perdu).
     this.name = 'MissionNotFoundError'
     this.code = 'NOT_FOUND'
   }

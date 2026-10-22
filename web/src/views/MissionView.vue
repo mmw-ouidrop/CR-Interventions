@@ -9,9 +9,10 @@ import { liveQuery } from 'dexie'
 import { findByReference, saveMission, getIntervention } from '../db.js'
 import { api } from '../lib/api.js'
 import { normalizeReference } from '../lib/ref.js'
-import { formatPropertyValue, missionStatus } from '../lib/format.js'
+import { missionStatus } from '../lib/format.js'
 import { online } from '../lib/online.js'
 import { DEFAULT_PREFIX } from '../config.js'
+import PropertiesPanel from '../components/PropertiesPanel.vue'
 
 const props = defineProps({ reference: { type: String, required: true } })
 
@@ -73,30 +74,10 @@ const componentCount = (m) => m.templateBlocks.filter((b) => b.kind === 'compone
     </p>
     <h4 v-if="mission.title">{{ mission.title }}</h4>
 
-    <section class="card" aria-labelledby="info-title">
-      <h3 id="info-title">Mission</h3>
-      <dl class="props">
-        <template v-for="p in mission.readOnlyData" :key="p.label">
-          <dt>{{ p.label }}</dt>
-          <dd>{{ formatPropertyValue(p) }}</dd>
-        </template>
-      </dl>
-    </section>
+    <PropertiesPanel :properties="mission.readOnlyData" />
 
     <p class="small muted" style="margin-top: var(--s-4)">
       Template chargé : {{ componentCount(mission) }} champ(s) à remplir. Disponible hors ligne.
     </p>
   </template>
 </template>
-
-<style scoped>
-.props { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px var(--s-4); margin: 0; }
-.props dt { font: 600 var(--fs-small)/1.3 var(--f-body); color: var(--c-navy); margin-top: var(--s-3); }
-.props dt:first-child { margin-top: 0; }
-.props dd { margin: 0; overflow-wrap: anywhere; }
-@media (min-width: 560px) {
-  .props { grid-template-columns: minmax(120px, 1fr) 2fr; }
-  .props dt { margin-top: 0; padding-top: var(--s-2); }
-  .props dd { padding-top: var(--s-2); }
-}
-</style>
