@@ -110,6 +110,29 @@ test('photos : plus de 6 → plusieurs lots, toutes confirmées, statut envoyé 
   assert.ok(w.visibleReport().length > 0)
 })
 
+test('échec d’envoi d’une photo : le texte part quand même, la photo repart au prochain essai', async () => {
+  const { w, server, device } = setup()
+  const a = device('Karim', 'Benali')
+  await open(a, server)
+  await a.store.setFields(ID, { etat_materiel: 'Usagé' })
+  await a.store.addPhoto(ID, 'photo_compteur', jpeg())
+  const real = server.uploadMedia
+  server.uploadMedia = async () => { throw new ApiError('BAD_RESPONSE', 'Réponse inattendue du serveur.') }
+  const r = await a.engine.syncMission(ID)
+  assert.equal(r.error.code, 'BAD_RESPONSE')
+  assert.ok(w.visibleReport().map((b) => w.text(b)).includes('État du matériel : Usagé'), 'le texte est dans Notion')
+  let rec = await a.store.getIntervention(ID)
+  assert.equal(rec.needsSync, 1, 'la photo reste à envoyer')
+  assert.equal(rec.fields.etat_materiel.dirty, undefined)
+  assert.equal((await a.store.listPhotos(ID))[0].uploadStatus, 'queued')
+  server.uploadMedia = real
+  const r2 = await a.engine.syncMission(ID, { force: true })
+  assert.equal(r2.error, undefined, String(r2.error))
+  rec = await a.store.getIntervention(ID)
+  assert.equal(rec.needsSync, 0)
+  assert.equal(Object.values(rec.shared.photos).flat().length, 1)
+})
+
 test('deux appareils : champs fusionnés, même champ = dernier gagnant, perdant prévenu et peut reprendre', async () => {
   const { w, server, device } = setup()
   const a = device('Karim', 'Benali')

@@ -34,10 +34,16 @@ async function request(url, init, timeoutMs) {
   }
 
   let body
+  let text = ''
   try {
-    body = await res.json()
+    text = await res.text()
+    body = JSON.parse(text)
   } catch {
-    throw new ApiError('BAD_RESPONSE', 'Réponse inattendue du serveur.')
+    // Apps Script répond par une page HTML quand l'exécution est interrompue (durée max, quota,
+    // autorisation manquante…) : on garde un extrait pour que l'erreur affichée permette de diagnostiquer.
+    const kind = (res.headers && res.headers.get && res.headers.get('content-type')) || ''
+    const extract = text.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)
+    throw new ApiError('BAD_RESPONSE', `Réponse inattendue du serveur (HTTP ${res.status}${kind ? ', ' + kind.split(';')[0] : ''})${extract ? ' : ' + extract : ''}`)
   }
   if (!body || body.ok !== true) {
     const e = (body && body.error) || {}

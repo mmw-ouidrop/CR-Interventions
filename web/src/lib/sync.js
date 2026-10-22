@@ -49,6 +49,7 @@ export function createSyncEngine({ store, api, getIdentity, isOnline = () => tru
 
     const summary = { requests: 0, applied: 0, conflicts: 0, photos: 0, rejected: false }
     let lastSignature = ''
+    let photoError = null
     try {
       for (let round = 0; round < MAX_ROUNDS; round++) {
         let rec = await store.getIntervention(id)
@@ -56,9 +57,16 @@ export function createSyncEngine({ store, api, getIdentity, isOnline = () => tru
         let rows = await store.listPhotos(id)
 
         // 1. photos prises sur cet appareil → copie de transit dans Drive (par lots)
+        //    Un échec de photo ne bloque JAMAIS l'envoi du texte : on garde l'erreur, on envoie le
+        //    reste, puis on termine en erreur (la photo repartira au prochain essai).
         if (!serverFrozen(rec)) {
           for (const row of rows.filter((r) => r.uploadStatus === 'queued').slice(0, PHOTOS_PER_REQUEST)) {
-            await uploadOne(rec, row)
+            try {
+              await uploadOne(rec, row)
+            } catch (err) {
+              photoError = err
+              break
+            }
           }
           rows = await store.listPhotos(id)
           rec = await store.getIntervention(id)
@@ -67,7 +75,7 @@ export function createSyncEngine({ store, api, getIdentity, isOnline = () => tru
         // 2. un syncReport pour tout le reste
         const plan = computeChanges(rec, rows)
         if (!plan.hasWork) {
-          if (round === 0) await pullMission(id, { inSync: true })
+          if (round === 0 && !photoError) await pullMission(id, { inSync: true })
           break
         }
         const signature = JSON.stringify([Object.keys(plan.sent.fields).sort(), plan.batch.map((r) => r.mediaId), plan.changes.status || null, plan.photosLeft])
@@ -94,10 +102,11 @@ export function createSyncEngine({ store, api, getIdentity, isOnline = () => tru
         const after = await store.getIntervention(id)
         const afterRows = await store.listPhotos(id)
         const next = computeChanges(after, afterRows)
+        if (photoError) break
         if (!next.hasWork && !(hasQueued(afterRows) && !serverFrozen(after))) break
       }
-      await store.endSync(id)
-      return summary
+      await store.endSync(id, photoError || undefined)
+      return photoError ? { ...summary, error: photoError } : summary
     } catch (err) {
       await store.endSync(id, err)
       return { ...summary, error: err }

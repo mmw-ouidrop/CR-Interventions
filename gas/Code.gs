@@ -245,6 +245,12 @@ function notion_(method, path, payload) {
     try { data = JSON.parse(text); } catch (err) { data = { message: text }; }
 
     if (code >= 200 && code < 300) return data;
+    if (code === 403) {
+      throw new ApiError_('NOTION_FORBIDDEN',
+        'Notion refuse cette opération (' + method + ' ' + path.split('?')[0] + ') : ' + ((data && data.message) || 'accès refusé') +
+        ". Dans notion.so/my-integrations, l'intégration doit avoir les capacités « Read content », « Update content » et « Insert content », " +
+        'et être ajoutée à la base (⋯ ▸ Connexions).', { status: code, notionCode: data && data.code });
+    }
     throw new ApiError_('NOTION_ERROR', (data && data.message) || ('HTTP ' + code), {
       status: code,
       notionCode: data && data.code
